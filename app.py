@@ -15,6 +15,7 @@ def load_image_model():
 # Cache the caption generation pipeline from Hugging Face.
 @st.cache_resource
 def load_caption_generator():
+    # Using do_sample=True for more varied outputs.
     caption_generator = pipeline("text-generation", model="gpt2")
     return caption_generator
 
@@ -38,31 +39,59 @@ def extract_labels(image: Image.Image, model, top=5):
     decoded = decode_predictions(preds, top=top)[0]
     return decoded
 
-def generate_caption(labels, generator, max_length=50):
+def generate_captions(labels, generator, num_captions=10):
     """
     Given a list of labels and a Hugging Face text generator,
-    create a prompt and generate a creative social media caption.
+    create a prompt and generate multiple creative social media captions.
+    The final caption text (without the prompt) is trimmed to be between 5 to 10 words.
     """
-    # Filter out labels with very low confidence if desired
-    # (here we use all top 5 labels; you can add a threshold if needed)
+    # Extract label names from the predictions
     label_list = [label for (_, label, confidence) in labels]
     
     # Create a prompt using the extracted labels.
     prompt = f"Write a creative and engaging social media caption for a photo featuring: {', '.join(label_list)}."
     
-    # Generate text from the prompt
-    result = generator(prompt, max_length=max_length, num_return_sequences=1)
-    caption = result[0]['generated_text']
+    # Approximate the number of words in the prompt.
+    prompt_word_count = len(prompt.split())
+    # We want the generated part (after the prompt) to have between 5 and 10 words.
+    # Set the min_length and max_length for the entire output accordingly.
+    min_length = prompt_word_count + 5
+    max_length = prompt_word_count + 10
     
-    # Optionally, remove the prompt from the generated caption if it's repeated.
-    if caption.startswith(prompt):
-        caption = caption[len(prompt):].strip()
+    # Generate multiple captions using the text-generation pipeline.
+    results = generator(
+        prompt,
+        min_length=min_length,
+        max_length=max_length,
+        num_return_sequences=num_captions,
+        do_sample=True
+    )
     
-    return caption
+    captions = []
+    for result in results:
+        caption_full = result['generated_text']
+        # Remove the prompt from the generated text.
+        if caption_full.startswith(prompt):
+            caption = caption_full[len(prompt):].strip()
+        else:
+            caption = caption_full.strip()
+            
+        # Now ensure the caption is between 5 and 10 words.
+        words = caption.split()
+        if len(words) < 5:
+            # If too short, skip or you can choose to pad/ignore; here we leave it as-is.
+            final_caption = caption
+        elif len(words) > 10:
+            # Trim to the first 10 words.
+            final_caption = " ".join(words[:10])
+        else:
+            final_caption = caption
+        captions.append(final_caption)
+    return captions
 
 def main():
     st.title("Image Label Extractor & Caption Generator")
-    st.write("Upload an image to extract labels and generate a creative social media caption.")
+    st.write("Upload an image to extract labels and generate creative social media captions (5 to 10 words each).")
 
     # Allow the user to upload an image file (jpg, jpeg, or png)
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
@@ -79,16 +108,17 @@ def main():
         
         st.write("### Extracted Labels:")
         for pred in labels:
-            # Each 'pred' tuple is (imagenet_id, label, confidence)
+            # Each prediction tuple is (imagenet_id, label, confidence)
             st.write(f"**{pred[1]}**: {pred[2]*100:.2f}%")
         
-        st.write("Generating social media caption, please wait...")
-        # Load the caption generator and generate a caption based on the labels
+        st.write("Generating social media captions, please wait...")
+        # Load the caption generator and generate multiple captions based on the labels
         caption_generator = load_caption_generator()
-        caption = generate_caption(labels, caption_generator, max_length=50)
+        captions = generate_captions(labels, caption_generator, num_captions=10)
         
-        st.write("### Social Media Caption:")
-        st.write(caption)
+        st.write("### Generated Social Media Captions:")
+        for idx, caption in enumerate(captions, start=1):
+            st.write(f"**Caption {idx}:** {caption}")
     else:
         st.write("Please upload an image to get started.")
 
