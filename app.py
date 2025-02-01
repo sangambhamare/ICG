@@ -1,13 +1,14 @@
 import os
+import json
 import streamlit as st
 import numpy as np
 from PIL import Image
 import tensorflow as tf
-from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input, decode_predictions
+from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input
 from tensorflow.keras.preprocessing.image import img_to_array
 from transformers import pipeline
 
-# Optionally, force CPU usage if GPU issues persist:
+# Optionally force CPU usage if GPU issues persist:
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # Configure GPU memory growth (if GPUs are available)
@@ -19,36 +20,70 @@ if gpus:
     except Exception as e:
         st.warning(f"Could not set GPU memory growth: {e}")
 
-# Cache the image classification model so it's loaded only once per session.
+# ---------------------
+# Custom decode_predictions function
+# ---------------------
+def custom_decode_predictions(preds, top=5):
+    """
+    Decode the prediction of an ImageNet model.
+    This function loads the ImageNet class index from a JSON file and
+    returns the top predicted labels.
+    """
+    # Download (or load from cache) the ImageNet class index file.
+    CLASS_INDEX_PATH = tf.keras.utils.get_file(
+        'imagenet_class_index.json',
+        'https://storage.googleapis.com/download.tensorflow.org/data/imagenet_class_index.json'
+    )
+    with open(CLASS_INDEX_PATH) as f:
+        class_index = json.load(f)
+    
+    results = []
+    for pred in preds:
+        # Get the indices of the top predictions
+        top_indices = pred.argsort()[-top:][::-1]
+        result = []
+        for i in top_indices:
+            str_i = str(i)
+            if str_i in class_index:
+                result.append((class_index[str_i][0], class_index[str_i][1], float(pred[i])))
+            else:
+                result.append(("N/A", "N/A", float(pred[i])))
+        results.append(result)
+    return results
+
+# ---------------------
+# Caching models/pipelines
+# ---------------------
 @st.cache_resource
 def load_image_model():
     model = MobileNetV2(weights="imagenet")
     return model
 
-# Cache the caption generation pipeline from Hugging Face.
 @st.cache_resource
 def load_caption_generator():
-    # Using do_sample=True to add variability in generation.
+    # Using do_sample=True for varied outputs.
     caption_generator = pipeline("text-generation", model="gpt2")
     return caption_generator
 
+# ---------------------
+# Helper functions
+# ---------------------
 def extract_labels(image: Image.Image, model, top=5):
     """
-    Resize and preprocess the image, run prediction,
-    and return the top predicted labels.
+    Resize, preprocess the image, run prediction,
+    and return the top predicted labels using custom_decode_predictions.
     """
     try:
-        # Ensure the image is in the expected size and format.
         image = image.resize((224, 224))
         x = img_to_array(image)
         x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
         
-        # Debug output: show shape and dtype.
+        # Optional: Debug information
         st.write("Input shape:", x.shape, "dtype:", x.dtype)
         
         preds = model.predict(x)
-        decoded = decode_predictions(preds, top=top)[0]
+        decoded = custom_decode_predictions(preds, top=top)[0]
         return decoded
     except Exception as e:
         st.error("Error during label extraction: " + str(e))
@@ -59,13 +94,13 @@ def generate_captions(labels, generator, num_captions=10):
     Create a prompt based on the extracted labels and generate multiple captions.
     Each caption is trimmed to be between 5 and 10 words.
     """
-    # Extract the label names from the predictions.
+    # Extract label names from the predictions
     label_list = [label for (_, label, confidence) in labels]
     prompt = f"Write a creative and engaging social media caption for a photo featuring: {', '.join(label_list)}."
     
     # Estimate prompt word count.
     prompt_word_count = len(prompt.split())
-    # We want the generated addition to be 5-10 words.
+    # We want the generated part (after the prompt) to be between 5 and 10 words.
     min_length = prompt_word_count + 5
     max_length = prompt_word_count + 10
     
@@ -80,24 +115,26 @@ def generate_captions(labels, generator, num_captions=10):
     captions = []
     for result in results:
         caption_full = result['generated_text']
-        # Remove the prompt from the generated text, if it is repeated.
+        # Remove the prompt from the generated text if repeated.
         if caption_full.startswith(prompt):
             caption = caption_full[len(prompt):].strip()
         else:
             caption = caption_full.strip()
         
-        # Split into words and enforce 5-10 word length.
+        # Split into words and enforce length between 5 and 10 words.
         words = caption.split()
         if len(words) < 5:
-            final_caption = caption  # Optionally, you could skip or adjust too-short captions.
+            final_caption = caption  # You could also choose to skip too-short captions.
         elif len(words) > 10:
             final_caption = " ".join(words[:10])
         else:
             final_caption = caption
         captions.append(final_caption)
-    
     return captions
 
+# ---------------------
+# Main app function
+# ---------------------
 def main():
     st.title("Image Label Extractor & Caption Generator")
     st.write("Upload an image to extract labels and generate creative social media captions (5 to 10 words each).")
