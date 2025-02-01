@@ -61,8 +61,8 @@ def load_image_model():
 
 @st.cache_resource
 def load_caption_generator():
-    # Using do_sample=True for varied outputs.
-    caption_generator = pipeline("text-generation", model="gpt2")
+    # Use the PyTorch backend by specifying framework="pt" to avoid TensorFlow generation issues.
+    caption_generator = pipeline("text-generation", model="gpt2", framework="pt")
     return caption_generator
 
 # ---------------------
@@ -124,7 +124,7 @@ def generate_captions(labels, generator, num_captions=10):
         # Split into words and enforce length between 5 and 10 words.
         words = caption.split()
         if len(words) < 5:
-            final_caption = caption  # You could also choose to skip too-short captions.
+            final_caption = caption  # You might choose to skip or adjust too-short captions.
         elif len(words) > 10:
             final_caption = " ".join(words[:10])
         else:
