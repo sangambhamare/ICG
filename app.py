@@ -39,11 +39,10 @@ def load_t5_model():
 
 def generate_social_media_captions(initial_caption, num_outputs=3):
     """
-    Given the initial caption string, generate multiple creative social media captions
+    Given the initial caption, generate multiple creative social media captions
     using similar words and including relevant hashtags.
     Returns a list of caption strings.
     """
-    # Combine the initial caption into a prompt for rephrasing
     prompt = (
         f"Rewrite the following text as creative social media captions with similar words "
         f"and include relevant hashtags: {initial_caption}"
@@ -57,37 +56,30 @@ def generate_social_media_captions(initial_caption, num_outputs=3):
         num_return_sequences=num_outputs,
         early_stopping=True,
     )
-    social_captions = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
-    return social_captions
+    captions = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+    return captions
 
 ##############################
 # Streamlit App
 ##############################
 st.title("Image Captioning & Social Media Caption Generator")
-st.write("Upload an image to generate a caption using the BLIP Large model, then get creative social media captions using T5.")
+st.write("Upload an image to get creative social media captions!")
 
 uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
     
-    with st.spinner("Generating initial caption using BLIP Large model..."):
-        proc_large, model_blip_large = load_blip_large_model()
-        blip_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
+    st.write("Captions are on the way...")
+
+    # Generate initial caption using BLIP Large
+    proc_large, model_blip_large = load_blip_large_model()
+    initial_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
     
-    st.write("**Initial Caption (BLIP Large):**")
-    st.write(blip_caption)
+    # Generate creative social media captions using T5
+    social_captions = generate_social_media_captions(initial_caption, num_outputs=3)
     
-    with st.spinner("Generating creative social media captions using T5..."):
-        social_captions = generate_social_media_captions(blip_caption, num_outputs=3)
-    
-    st.write("**Social Media Captions:**")
-    for idx, cap in enumerate(social_captions):
-        st.write(f"{idx+1}. {cap}")
-    
-    # Combine results into one array
-    results = [blip_caption, social_captions]
-    
-    st.write("**Final Results Array:**")
-    st.write(results)
+    st.markdown("### Generated Social Media Captions:")
+    for idx, caption in enumerate(social_captions, start=1):
+        st.markdown(f"**{idx}.** {caption}")
