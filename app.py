@@ -10,7 +10,7 @@ from transformers import (
     T5ForConditionalGeneration,
 )
 
-# Suppress extra logging from transformers
+# Suppress excessive logging from transformers
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
 ##############################
@@ -29,7 +29,7 @@ def generate_caption_blip_large(processor, model, image):
     return caption
 
 ##############################
-# T5-Based Social Media Caption Generation Function
+# T5-Based Social Media Caption Generation (flan-t5-large)
 ##############################
 @st.cache_resource
 def load_t5_model():
@@ -39,7 +39,7 @@ def load_t5_model():
 
 def generate_social_media_captions(initial_caption, num_outputs=3):
     """
-    Given the initial caption, generate multiple creative social media captions
+    Given an initial caption string, generate multiple creative social media captions 
     using similar words and including relevant hashtags.
     Returns a list of caption strings.
     """
@@ -60,26 +60,71 @@ def generate_social_media_captions(initial_caption, num_outputs=3):
     return captions
 
 ##############################
+# Extra Social Media Caption Generation (flan-t5-xxl)
+##############################
+@st.cache_resource
+def load_t5_xxl_model():
+    # Load the XXL model for additional caption generation
+    tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-xxl")
+    model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xxl")
+    return tokenizer, model
+
+def generate_extra_captions(initial_caption, num_outputs=3):
+    """
+    Using the flan-t5-xxl model, generate extra creative social media captions
+    based on the initial caption.
+    Returns a list of caption strings.
+    """
+    prompt = (
+        f"Rewrite the following text as additional creative social media captions with similar words "
+        f"and include relevant hashtags: {initial_caption}"
+    )
+    tokenizer, model = load_t5_xxl_model()
+    input_ids = tokenizer(prompt, return_tensors="pt").input_ids
+    outputs = model.generate(
+        input_ids,
+        max_new_tokens=100,
+        num_beams=5,
+        num_return_sequences=num_outputs,
+        early_stopping=True,
+    )
+    extra_captions = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+    return extra_captions
+
+##############################
 # Streamlit App
 ##############################
-st.title("Image Captioning & Social Media Caption Generator")
-st.write("Upload an image to get creative social media captions!")
+st.title("Image Captioning & Enhanced Social Media Caption Generator")
+st.write("Upload an image to generate an initial caption with BLIP Large, then generate creative social media captions using T5 models.")
 
 uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
     
-    st.write("Captions are on the way...")
-
-    # Generate initial caption using BLIP Large
-    proc_large, model_blip_large = load_blip_large_model()
-    initial_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
+    with st.spinner("Generating initial caption using BLIP Large model..."):
+        proc_large, model_blip_large = load_blip_large_model()
+        initial_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
     
-    # Generate creative social media captions using T5
-    social_captions = generate_social_media_captions(initial_caption, num_outputs=3)
+    st.subheader("Initial Caption (BLIP Large):")
+    st.write(initial_caption)
     
-    st.markdown("### Generated Social Media Captions:")
-    for idx, caption in enumerate(social_captions, start=1):
-        st.markdown(f"**{idx}.** {caption}")
+    with st.spinner("Generating creative social media captions using flan-t5-large..."):
+        social_captions = generate_social_media_captions(initial_caption, num_outputs=3)
+    
+    st.subheader("Creative Social Media Captions (flan-t5-large):")
+    for idx, cap in enumerate(social_captions):
+        st.write(f"{idx+1}. {cap}")
+    
+    with st.spinner("Generating extra creative social media captions using flan-t5-xxl..."):
+        extra_captions = generate_extra_captions(initial_caption, num_outputs=3)
+    
+    st.subheader("Extra Creative Social Media Captions (flan-t5-xxl):")
+    for idx, cap in enumerate(extra_captions):
+        st.write(f"{idx+1}. {cap}")
+    
+    # Combine all results into one array (optional)
+    results = [initial_caption, social_captions, extra_captions]
+    st.subheader("Final Results Array:")
+    st.write(results)
