@@ -6,7 +6,7 @@ import torch
 from transformers import (
     BlipProcessor,
     BlipForConditionalGeneration,
-    RobertaTokenizer,
+    T5Tokenizer,
     T5ForConditionalGeneration,
 )
 
@@ -29,34 +29,32 @@ def generate_caption_blip_large(processor, model, image):
     return caption
 
 ##############################
-# CodeT5-Small Model for Social Media Caption Generation
+# T5-Based Social Media Caption Generation Function
 ##############################
 @st.cache_resource
-def load_codet5_model():
-    # Load the CodeT5-small model and its RobertaTokenizer
-    tokenizer = RobertaTokenizer.from_pretrained('Salesforce/codet5-small')
-    model = T5ForConditionalGeneration.from_pretrained('Salesforce/codet5-small')
+def load_t5_model():
+    tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-large")
+    model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large")
     return tokenizer, model
 
 def generate_social_media_captions(initial_caption, num_outputs=3):
     """
-    Given the initial caption, generate multiple creative social media captions using
-    the Salesforce CodeT5-small model.
+    Given the initial caption, generate multiple creative social media captions
+    using similar words and including relevant hashtags.
     Returns a list of caption strings.
     """
     prompt = (
         f"Rewrite the following text as creative social media captions with similar words "
         f"and include relevant hashtags: {initial_caption}"
     )
-    tokenizer, model = load_codet5_model()
+    tokenizer, model = load_t5_model()
     input_ids = tokenizer(prompt, return_tensors="pt").input_ids
-    # Adjust max_length as needed; here we use 30 as an example.
     outputs = model.generate(
         input_ids,
-        max_length=30,
+        max_new_tokens=100,
         num_beams=5,
         num_return_sequences=num_outputs,
-        early_stopping=True
+        early_stopping=True,
     )
     captions = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
     return captions
@@ -65,7 +63,7 @@ def generate_social_media_captions(initial_caption, num_outputs=3):
 # Streamlit App
 ##############################
 st.title("Image Captioning & Social Media Caption Generator")
-st.write("Upload an image to generate creative social media captions!")
+st.write("Upload an image to get creative social media captions!")
 
 uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
 
@@ -74,22 +72,14 @@ if uploaded_file is not None:
     st.image(image, caption="Uploaded Image", use_container_width=True)
     
     st.write("Captions are on the way...")
-    
-    # Generate the initial caption using BLIP Large model.
+
+    # Generate initial caption using BLIP Large
     proc_large, model_blip_large = load_blip_large_model()
     initial_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
     
-    st.write("**Initial Caption (BLIP Large):**")
-    st.write(initial_caption)
-    
-    # Generate multiple social media captions using CodeT5-small.
+    # Generate creative social media captions using T5
     social_captions = generate_social_media_captions(initial_caption, num_outputs=3)
     
     st.markdown("### Generated Social Media Captions:")
     for idx, caption in enumerate(social_captions, start=1):
         st.markdown(f"**{idx}.** {caption}")
-    
-    # Optionally, combine final results into one list and display.
-    results = [initial_caption, social_captions]
-    st.write("**Final Results:**")
-    st.write(results)
