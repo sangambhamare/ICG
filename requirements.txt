@@ -1,7 +1,4 @@
 streamlit
-tensorflow
+transformers
 pillow
 requests
-transformers
-tf-keras
-torch
