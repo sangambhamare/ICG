@@ -45,7 +45,7 @@ def main():
 
     # If an image is available, display it and allow caption generation
     if image:
-        st.image(image, caption="Selected Image", use_column_width=True)
+        st.image(image, caption="Selected Image", use_container_width=True)
         
         mode = st.radio("Select captioning mode:", ("Conditional", "Unconditional"))
         
