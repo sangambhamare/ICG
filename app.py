@@ -9,6 +9,7 @@ from tensorflow.keras.preprocessing.image import img_to_array
 import openai
 
 # Set OpenAI API key from st.secrets
+# (Make sure you have added your API key in your Streamlit secrets, e.g., in .streamlit/secrets.toml)
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # Optionally force CPU usage if GPU issues persist:
@@ -72,7 +73,7 @@ def extract_labels(image: Image.Image, model, top=5):
         x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
         
-        # Debug: Display the input shape and data type
+        # Debug: Display the input shape and dtype
         st.write("Input shape:", x.shape, "dtype:", x.dtype)
         
         preds = model.predict(x)
@@ -83,13 +84,13 @@ def extract_labels(image: Image.Image, model, top=5):
         raise
 
 # ---------------------
-# Generate captions using ChatGPT
+# Generate captions using ChatGPT via OpenAI's ChatCompletion API
 # ---------------------
 def generate_captions_with_chatgpt(labels, num_captions=10):
     """
     Use ChatGPT (OpenAI's ChatCompletion API) to generate social media captions based on the extracted labels.
     """
-    # Extract just the label names (ignoring the ImageNet ID and confidence)
+    # Extract the label names (ignoring the ImageNet ID and confidence)
     label_list = [label for (_, label, confidence) in labels]
     
     # Create a prompt asking for succinct captions.
@@ -99,6 +100,8 @@ def generate_captions_with_chatgpt(labels, num_captions=10):
         f"Output the captions as a numbered list."
     )
     
+    # Call the ChatCompletion API.  
+    # If you see an APIRemovedInV1 error here, please run `openai migrate` or pin openai to version 0.28.
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
