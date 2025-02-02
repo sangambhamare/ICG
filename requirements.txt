@@ -4,4 +4,4 @@ pillow
 transformers
 tf-keras
 torch
-openai
+openai==0.28
