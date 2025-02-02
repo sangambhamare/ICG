@@ -1,7 +1,7 @@
 streamlit
 tensorflow
 pillow
+requests
 transformers
 tf-keras
 torch
-openai==0.28
