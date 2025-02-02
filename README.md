@@ -1,4 +1,4 @@
-# BLIP Image Captioning App
+# Image Captioning App
 
 This repository contains a Streamlit application that leverages the BLIP model for image captioning. The app allows users to either upload an image or provide an image URL, and then generate creative image captions using two modes:
 
