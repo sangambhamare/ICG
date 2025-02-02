@@ -10,22 +10,18 @@ def load_blip_model():
     model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
     return processor, model
 
-def generate_caption(processor, model, image, prompt=None):
+def generate_caption(processor, model, image):
     """
-    Generate a caption using BLIP.
-    If a prompt is provided, conditional captioning is performed; otherwise, unconditional captioning.
+    Generate an unconditional caption using BLIP.
     """
-    if prompt:
-        inputs = processor(image, prompt, return_tensors="pt")
-    else:
-        inputs = processor(image, return_tensors="pt")
+    inputs = processor(image, return_tensors="pt")
     output = model.generate(**inputs)
     caption = processor.decode(output[0], skip_special_tokens=True)
     return caption
 
 def main():
     st.title("Image Captioning")
-    st.write("Upload an image or enter an image URL to generate captions using BLIP.")
+    st.write("Upload an image or enter an image URL to generate an unconditional caption using BLIP.")
 
     # Choose how to input an image
     input_method = st.radio("Select image input method:", ("Upload Image", "Image URL"))
@@ -39,28 +35,21 @@ def main():
         img_url = st.text_input("Enter image URL:")
         if img_url:
             try:
-                image = Image.open(requests.get(img_url, stream=True).raw).convert("RGB")
+                response = requests.get(img_url, stream=True, timeout=10)
+                response.raise_for_status()
+                image = Image.open(response.raw).convert("RGB")
             except Exception as e:
                 st.error(f"Error loading image: {e}")
 
     # If an image is available, display it and allow caption generation
     if image:
         st.image(image, caption="Selected Image", use_container_width=True)
-        
-        mode = st.radio("Select captioning mode:", ("Conditional", "Unconditional"))
-        
-        if mode == "Conditional":
-            prompt = st.text_input("Enter a prompt (e.g., 'a photography of'):", value="a photography of")
-        else:
-            prompt = None
-        
+
         if st.button("Generate Caption"):
-            processor, model = load_blip_model()
-            caption = generate_caption(processor, model, image, prompt)
-            if prompt:
-                st.write("**Conditional Caption:**", caption)
-            else:
-                st.write("**Unconditional Caption:**", caption)
+            with st.spinner("Loading model and generating caption..."):
+                processor, model = load_blip_model()
+                caption = generate_caption(processor, model, image)
+            st.write("**Caption:**", caption)
     else:
         st.write("Please upload an image or enter a valid image URL.")
 
