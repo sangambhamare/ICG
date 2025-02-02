@@ -8,8 +8,8 @@ from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_i
 from tensorflow.keras.preprocessing.image import img_to_array
 import openai
 
-# Set OpenAI API key (ensure you have set the OPENAI_API_KEY environment variable)
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set OpenAI API key from st.secrets
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # Optionally force CPU usage if GPU issues persist:
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -72,7 +72,7 @@ def extract_labels(image: Image.Image, model, top=5):
         x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
         
-        # Optional: display debug information about input shape and dtype
+        # Debug: Display the input shape and data type
         st.write("Input shape:", x.shape, "dtype:", x.dtype)
         
         preds = model.predict(x)
@@ -87,7 +87,7 @@ def extract_labels(image: Image.Image, model, top=5):
 # ---------------------
 def generate_captions_with_chatgpt(labels, num_captions=10):
     """
-    Use ChatGPT to generate social media captions based on the extracted labels.
+    Use ChatGPT (OpenAI's ChatCompletion API) to generate social media captions based on the extracted labels.
     """
     # Extract just the label names (ignoring the ImageNet ID and confidence)
     label_list = [label for (_, label, confidence) in labels]
@@ -96,7 +96,7 @@ def generate_captions_with_chatgpt(labels, num_captions=10):
     prompt = (
         f"Generate {num_captions} succinct, creative, and engaging social media captions "
         f"(each between 5 and 10 words) for a photo featuring: {', '.join(label_list)}. "
-        f"Please output the captions as a numbered list."
+        f"Output the captions as a numbered list."
     )
     
     response = openai.ChatCompletion.create(
@@ -122,7 +122,6 @@ def generate_captions_with_chatgpt(labels, num_captions=10):
                 if dot_index != -1:
                     line = line[dot_index+1:].strip()
                 else:
-                    # Try to remove other numbering formats like "1)"
                     paren_index = line.find(')')
                     if paren_index != -1:
                         line = line[paren_index+1:].strip()
