@@ -98,16 +98,12 @@ def generate_captions(labels, generator, num_captions=10):
     label_list = [label for (_, label, confidence) in labels]
     prompt = f"Write a creative and engaging social media caption for a photo featuring: {', '.join(label_list)}."
     
-    # Estimate prompt word count.
-    prompt_word_count = len(prompt.split())
-    # We want the generated part (after the prompt) to be between 5 and 10 words.
-    min_length = prompt_word_count + 5
-    max_length = prompt_word_count + 10
-    
+    # Instead of using min_length/max_length (which includes the prompt length),
+    # use min_new_tokens and max_new_tokens to generate only new tokens.
     results = generator(
         prompt,
-        min_length=min_length,
-        max_length=max_length,
+        min_new_tokens=5,
+        max_new_tokens=10,
         num_return_sequences=num_captions,
         do_sample=True
     )
@@ -121,10 +117,10 @@ def generate_captions(labels, generator, num_captions=10):
         else:
             caption = caption_full.strip()
         
-        # Split into words and enforce length between 5 and 10 words.
+        # Post-process to ensure caption is between 5 and 10 words.
         words = caption.split()
         if len(words) < 5:
-            final_caption = caption  # You might choose to skip or adjust too-short captions.
+            final_caption = caption  # Optionally, you might choose to skip too-short captions.
         elif len(words) > 10:
             final_caption = " ".join(words[:10])
         else:
