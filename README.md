@@ -19,10 +19,4 @@ The BLIP model (from [Salesforce](https://www.salesforce.com/)) is integrated vi
 - Python 3.7+
 - See [requirements.txt](requirements.txt) for the full list of dependencies.
 
-## Installation
 
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/your-username/your-repo-name.git
-   cd your-repo-name
