@@ -2,3 +2,4 @@ streamlit
 transformers
 pillow
 requests
+Torch
