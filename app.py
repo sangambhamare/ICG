@@ -18,7 +18,8 @@ def load_blip_model():
     """
     Load and cache the BLIP image captioning model and its processor.
     """
-    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+    # Using use_fast=True if the processor supports it.
+    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base", use_fast=True)
     model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
     return processor, model
 
@@ -40,7 +41,8 @@ def load_vit_gpt2_model():
     Load and cache the ViT-GPT2 image captioning model, its feature extractor, and tokenizer.
     """
     model = VisionEncoderDecoderModel.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
-    feature_extractor = ViTImageProcessor.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
+    # Using use_fast=True if supported.
+    feature_extractor = ViTImageProcessor.from_pretrained("nlpconnect/vit-gpt2-image-captioning", use_fast=True)
     tokenizer = AutoTokenizer.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
