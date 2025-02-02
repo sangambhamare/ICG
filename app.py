@@ -25,11 +25,10 @@ if gpus:
 # ---------------------
 def custom_decode_predictions(preds, top=5):
     """
-    Decode the prediction of an ImageNet model.
+    Decode the predictions of an ImageNet model.
     This function loads the ImageNet class index from a JSON file and
     returns the top predicted labels.
     """
-    # Download (or load from cache) the ImageNet class index file.
     CLASS_INDEX_PATH = tf.keras.utils.get_file(
         'imagenet_class_index.json',
         'https://storage.googleapis.com/download.tensorflow.org/data/imagenet_class_index.json'
@@ -39,7 +38,6 @@ def custom_decode_predictions(preds, top=5):
     
     results = []
     for pred in preds:
-        # Get the indices of the top predictions
         top_indices = pred.argsort()[-top:][::-1]
         result = []
         for i in top_indices:
@@ -61,7 +59,7 @@ def load_image_model():
 
 @st.cache_resource
 def load_caption_generator():
-    # Use the PyTorch backend by specifying framework="pt" to avoid TensorFlow generation issues.
+    # Use the PyTorch backend (framework="pt") to avoid TensorFlow generation issues.
     caption_generator = pipeline("text-generation", model="gpt2", framework="pt")
     return caption_generator
 
@@ -79,7 +77,7 @@ def extract_labels(image: Image.Image, model, top=5):
         x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
         
-        # Optional: Debug information
+        # Debug: Display the input shape and data type
         st.write("Input shape:", x.shape, "dtype:", x.dtype)
         
         preds = model.predict(x)
@@ -91,36 +89,43 @@ def extract_labels(image: Image.Image, model, top=5):
 
 def generate_captions(labels, generator, num_captions=10):
     """
-    Create a prompt based on the extracted labels and generate multiple captions.
-    Each caption is trimmed to be between 5 and 10 words.
+    Create a refined prompt based on the extracted labels and generate multiple captions.
+    Each caption is post-processed to be between 5 and 10 words.
     """
     # Extract label names from the predictions
     label_list = [label for (_, label, confidence) in labels]
-    prompt = f"Write a creative and engaging social media caption for a photo featuring: {', '.join(label_list)}."
     
-    # Instead of using min_length/max_length (which includes the prompt length),
-    # use min_new_tokens and max_new_tokens to generate only new tokens.
+    # Refined prompt for succinct captions
+    prompt = (
+        f"Write a succinct, creative, and engaging social media caption (5-10 words) "
+        f"for a photo featuring: {', '.join(label_list)}."
+    )
+    
+    # Generate only new tokens beyond the prompt using min_new_tokens/max_new_tokens
     results = generator(
         prompt,
         min_new_tokens=5,
         max_new_tokens=10,
         num_return_sequences=num_captions,
-        do_sample=True
+        do_sample=True,
+        temperature=0.7,  # Lower temperature reduces randomness
+        top_p=0.9,
+        top_k=50
     )
     
     captions = []
     for result in results:
         caption_full = result['generated_text']
-        # Remove the prompt from the generated text if repeated.
+        # Remove the prompt from the generated text if it appears
         if caption_full.startswith(prompt):
             caption = caption_full[len(prompt):].strip()
         else:
             caption = caption_full.strip()
         
-        # Post-process to ensure caption is between 5 and 10 words.
+        # Post-process: split into words and ensure the caption is between 5 and 10 words.
         words = caption.split()
         if len(words) < 5:
-            final_caption = caption  # Optionally, you might choose to skip too-short captions.
+            final_caption = caption  # Optionally, skip or adjust captions that are too short.
         elif len(words) > 10:
             final_caption = " ".join(words[:10])
         else:
@@ -145,7 +150,6 @@ def main():
 
         st.image(image, caption="Uploaded Image", use_container_width=True)
         st.write("Extracting labels, please wait...")
-
         image_model = load_image_model()
         labels = extract_labels(image, image_model, top=5)
         
