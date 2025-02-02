@@ -3,6 +3,7 @@ import logging
 import requests
 from PIL import Image
 import torch
+import time
 from transformers import (
     BlipProcessor,
     BlipForConditionalGeneration,
@@ -31,7 +32,7 @@ def generate_caption_blip_large(processor, model, image):
     return caption
 
 ##############################
-# T5-Based Social Media Caption Generation Function (flan-t5-large)
+# T5-Based Social Media Caption Generation (flan-t5-large)
 ##############################
 @st.cache_resource
 def load_t5_model():
@@ -57,7 +58,7 @@ def generate_social_media_captions(initial_caption, num_outputs=3):
     return captions
 
 ##############################
-# GPT-2 Based Extra Social Media Caption Generation Function
+# GPT-2 Based Extra Social Media Caption Generation
 ##############################
 @st.cache_resource
 def load_gpt2_model():
@@ -84,7 +85,7 @@ def generate_extra_captions_gpt2(initial_caption, num_outputs=3):
 # Streamlit App
 ##############################
 st.title("Social Media Caption Generator")
-st.write("Upload an image and view creative social media captions.")
+st.write("Upload an image to generate creative social media captions.")
 
 uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
 
@@ -92,22 +93,19 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_container_width=True)
     
-    with st.spinner("Generating initial caption..."):
-        proc_large, model_blip_large = load_blip_large_model()
-        initial_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
+    # Start timing before generation begins
+    start_time = time.time()
     
-    # Generate creative captions using T5 (flan-t5-large)
-    with st.spinner("Generating creative captions (T5)..."):
-        t5_captions = generate_social_media_captions(initial_caption, num_outputs=3)
+    proc_large, model_blip_large = load_blip_large_model()
+    initial_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
     
-    # Generate extra captions using GPT-2
-    with st.spinner("Generating extra creative captions (GPT-2)..."):
-        gpt2_captions = generate_extra_captions_gpt2(initial_caption, num_outputs=3)
+    t5_captions = generate_social_media_captions(initial_caption, num_outputs=3)
+    gpt2_captions = generate_extra_captions_gpt2(initial_caption, num_outputs=3)
     
-    # Combine both sets of captions into a single ordered list
+    # Combine both sets of captions into one ordered list
     combined_captions = t5_captions + gpt2_captions
+    elapsed_time = time.time() - start_time
     
-    # Display only the ordered social media captions
-    st.subheader("Social Media Captions:")
+    st.subheader(f"Social Media Captions (generated in {elapsed_time:.1f} seconds):")
     for idx, caption in enumerate(combined_captions, start=1):
         st.write(f"{idx}. {caption}")
