@@ -6,7 +6,10 @@ from PIL import Image
 import tensorflow as tf
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input
 from tensorflow.keras.preprocessing.image import img_to_array
-from transformers import pipeline
+import openai
+
+# Set OpenAI API key (ensure you have set the OPENAI_API_KEY environment variable)
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Optionally force CPU usage if GPU issues persist:
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -26,8 +29,7 @@ if gpus:
 def custom_decode_predictions(preds, top=5):
     """
     Decode the predictions of an ImageNet model.
-    This function loads the ImageNet class index from a JSON file and
-    returns the top predicted labels.
+    Loads the ImageNet class index from a JSON file and returns the top predicted labels.
     """
     CLASS_INDEX_PATH = tf.keras.utils.get_file(
         'imagenet_class_index.json',
@@ -50,26 +52,19 @@ def custom_decode_predictions(preds, top=5):
     return results
 
 # ---------------------
-# Caching models/pipelines
+# Caching the image model
 # ---------------------
 @st.cache_resource
 def load_image_model():
     model = MobileNetV2(weights="imagenet")
     return model
 
-@st.cache_resource
-def load_caption_generator():
-    # Use the PyTorch backend (framework="pt") to avoid TensorFlow generation issues.
-    caption_generator = pipeline("text-generation", model="gpt2", framework="pt")
-    return caption_generator
-
 # ---------------------
-# Helper functions
+# Helper function to extract labels from an image
 # ---------------------
 def extract_labels(image: Image.Image, model, top=5):
     """
-    Resize, preprocess the image, run prediction,
-    and return the top predicted labels using custom_decode_predictions.
+    Resize and preprocess the image, run prediction, and return the top predicted labels.
     """
     try:
         image = image.resize((224, 224))
@@ -77,7 +72,7 @@ def extract_labels(image: Image.Image, model, top=5):
         x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
         
-        # Debug: Display the input shape and data type
+        # Optional: display debug information about input shape and dtype
         st.write("Input shape:", x.shape, "dtype:", x.dtype)
         
         preds = model.predict(x)
@@ -87,58 +82,59 @@ def extract_labels(image: Image.Image, model, top=5):
         st.error("Error during label extraction: " + str(e))
         raise
 
-def generate_captions(labels, generator, num_captions=10):
+# ---------------------
+# Generate captions using ChatGPT
+# ---------------------
+def generate_captions_with_chatgpt(labels, num_captions=10):
     """
-    Create a refined prompt based on the extracted labels and generate multiple captions.
-    Each caption is post-processed to be between 5 and 10 words.
+    Use ChatGPT to generate social media captions based on the extracted labels.
     """
-    # Extract label names from the predictions
+    # Extract just the label names (ignoring the ImageNet ID and confidence)
     label_list = [label for (_, label, confidence) in labels]
     
-    # Refined prompt for succinct captions
+    # Create a prompt asking for succinct captions.
     prompt = (
-        f"Write a succinct, creative, and engaging social media caption (5-10 words) "
-        f"for a photo featuring: {', '.join(label_list)}."
+        f"Generate {num_captions} succinct, creative, and engaging social media captions "
+        f"(each between 5 and 10 words) for a photo featuring: {', '.join(label_list)}. "
+        f"Please output the captions as a numbered list."
     )
     
-    # Generate only new tokens beyond the prompt using min_new_tokens/max_new_tokens
-    results = generator(
-        prompt,
-        min_new_tokens=5,
-        max_new_tokens=10,
-        num_return_sequences=num_captions,
-        do_sample=True,
-        temperature=0.7,  # Lower temperature reduces randomness
-        top_p=0.9,
-        top_k=50
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a creative caption generator."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7,
+        max_tokens=150
     )
     
+    text = response["choices"][0]["message"]["content"]
+    # Parse the response into separate captions.
+    lines = text.strip().splitlines()
     captions = []
-    for result in results:
-        caption_full = result['generated_text']
-        # Remove the prompt from the generated text if it appears
-        if caption_full.startswith(prompt):
-            caption = caption_full[len(prompt):].strip()
-        else:
-            caption = caption_full.strip()
-        
-        # Post-process: split into words and ensure the caption is between 5 and 10 words.
-        words = caption.split()
-        if len(words) < 5:
-            final_caption = caption  # Optionally, skip or adjust captions that are too short.
-        elif len(words) > 10:
-            final_caption = " ".join(words[:10])
-        else:
-            final_caption = caption
-        captions.append(final_caption)
+    for line in lines:
+        line = line.strip()
+        if line:
+            # Remove numbering if present (e.g., "1. " or "1) ")
+            if line[0].isdigit():
+                dot_index = line.find('.')
+                if dot_index != -1:
+                    line = line[dot_index+1:].strip()
+                else:
+                    # Try to remove other numbering formats like "1)"
+                    paren_index = line.find(')')
+                    if paren_index != -1:
+                        line = line[paren_index+1:].strip()
+            captions.append(line)
     return captions
 
 # ---------------------
-# Main app function
+# Main Streamlit app function
 # ---------------------
 def main():
-    st.title("Image Label Extractor & Caption Generator")
-    st.write("Upload an image to extract labels and generate creative social media captions (5 to 10 words each).")
+    st.title("Image Label Extractor & ChatGPT Caption Generator")
+    st.write("Upload an image to extract labels and generate creative social media captions (5-10 words each) using ChatGPT.")
 
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
     if uploaded_file is not None:
@@ -157,9 +153,8 @@ def main():
         for pred in labels:
             st.write(f"**{pred[1]}**: {pred[2]*100:.2f}%")
         
-        st.write("Generating social media captions, please wait...")
-        caption_generator = load_caption_generator()
-        captions = generate_captions(labels, caption_generator, num_captions=10)
+        st.write("Generating social media captions using ChatGPT, please wait...")
+        captions = generate_captions_with_chatgpt(labels, num_captions=10)
         
         st.write("### Generated Social Media Captions:")
         for idx, caption in enumerate(captions, start=1):
