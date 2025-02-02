@@ -24,7 +24,7 @@ def generate_caption(processor, model, image, prompt=None):
     return caption
 
 def main():
-    st.title("BLIP Image Captioning")
+    st.title("Image Captioning")
     st.write("Upload an image or enter an image URL to generate captions using BLIP.")
 
     # Choose how to input an image
