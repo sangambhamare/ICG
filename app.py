@@ -1,16 +1,15 @@
 import os
 import json
+import requests
 import streamlit as st
 import numpy as np
 from PIL import Image
 import tensorflow as tf
 from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input
 from tensorflow.keras.preprocessing.image import img_to_array
-import openai
 
-# Set OpenAI API key from st.secrets
-# (Make sure you have added your API key in your Streamlit secrets, e.g., in .streamlit/secrets.toml)
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# Set up Hugging Face API key from st.secrets (if available)
+hf_api_key = st.secrets.get("HF_API_KEY")  # optional; remove if you don't have one
 
 # Optionally force CPU usage if GPU issues persist:
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -73,7 +72,7 @@ def extract_labels(image: Image.Image, model, top=5):
         x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
         
-        # Debug: Display the input shape and dtype
+        # Debug: Display input shape and type
         st.write("Input shape:", x.shape, "dtype:", x.dtype)
         
         preds = model.predict(x)
@@ -84,59 +83,92 @@ def extract_labels(image: Image.Image, model, top=5):
         raise
 
 # ---------------------
-# Generate captions using ChatGPT via OpenAI's ChatCompletion API
+# Generate captions using Hugging Face Inference API
 # ---------------------
-def generate_captions_with_chatgpt(labels, num_captions=10):
+def generate_captions_with_hf(labels, num_captions=10):
     """
-    Use ChatGPT (OpenAI's ChatCompletion API) to generate social media captions based on the extracted labels.
+    Use the Hugging Face Inference API to generate social media captions based on the extracted labels.
+    The API call sends a prompt to a text-generation model (here, using GPT-2).
     """
-    # Extract the label names (ignoring the ImageNet ID and confidence)
+    # Extract label names from predictions
     label_list = [label for (_, label, confidence) in labels]
     
-    # Create a prompt asking for succinct captions.
+    # Create a refined prompt for succinct captions
     prompt = (
         f"Generate {num_captions} succinct, creative, and engaging social media captions "
         f"(each between 5 and 10 words) for a photo featuring: {', '.join(label_list)}. "
         f"Output the captions as a numbered list."
     )
     
-    # Call the ChatCompletion API.  
-    # If you see an APIRemovedInV1 error here, please run `openai migrate` or pin openai to version 0.28.
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a creative caption generator."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-        max_tokens=150
-    )
+    # Hugging Face Inference API endpoint for text-generation (using GPT-2)
+    API_URL = "https://api-inference.huggingface.co/models/gpt2"
+    headers = {}
+    if hf_api_key:
+        headers = {"Authorization": f"Bearer {hf_api_key}"}
     
-    text = response["choices"][0]["message"]["content"]
-    # Parse the response into separate captions.
-    lines = text.strip().splitlines()
+    # Set payload parameters (you can adjust these as needed)
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 50,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "do_sample": True,
+            "num_return_sequences": num_captions
+        },
+        "options": {
+            "wait_for_model": True
+        }
+    }
+    
+    response = requests.post(API_URL, headers=headers, json=payload)
+    if response.status_code != 200:
+        st.error("Error with Hugging Face API: " + response.text)
+        return []
+    
+    results = response.json()
+    
+    # Parse the generated output(s)
     captions = []
-    for line in lines:
-        line = line.strip()
-        if line:
-            # Remove numbering if present (e.g., "1. " or "1) ")
-            if line[0].isdigit():
-                dot_index = line.find('.')
-                if dot_index != -1:
-                    line = line[dot_index+1:].strip()
-                else:
+    for item in results:
+        generated_text = item.get("generated_text", "")
+        # Remove the prompt if it appears at the beginning
+        if generated_text.startswith(prompt):
+            generated_text = generated_text[len(prompt):].strip()
+        # Split output into lines; expect a numbered list
+        lines = generated_text.splitlines()
+        for line in lines:
+            line = line.strip()
+            if line:
+                # Remove numbering (e.g., "1. " or "1) ")
+                if line[0].isdigit():
+                    dot_index = line.find('.')
                     paren_index = line.find(')')
-                    if paren_index != -1:
-                        line = line[paren_index+1:].strip()
-            captions.append(line)
-    return captions
+                    idx = -1
+                    if dot_index != -1:
+                        idx = dot_index
+                    elif paren_index != -1:
+                        idx = paren_index
+                    if idx != -1:
+                        line = line[idx+1:].strip()
+                # Optionally trim to first 10 words
+                words = line.split()
+                if len(words) > 10:
+                    line = " ".join(words[:10])
+                captions.append(line)
+                if len(captions) >= num_captions:
+                    break
+        if len(captions) >= num_captions:
+            break
+
+    return captions[:num_captions]
 
 # ---------------------
 # Main Streamlit app function
 # ---------------------
 def main():
-    st.title("Image Label Extractor & ChatGPT Caption Generator")
-    st.write("Upload an image to extract labels and generate creative social media captions (5-10 words each) using ChatGPT.")
+    st.title("Image Label Extractor & Hugging Face Caption Generator")
+    st.write("Upload an image to extract labels and generate creative social media captions (5-10 words each) using Hugging Face's API.")
 
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
     if uploaded_file is not None:
@@ -155,8 +187,8 @@ def main():
         for pred in labels:
             st.write(f"**{pred[1]}**: {pred[2]*100:.2f}%")
         
-        st.write("Generating social media captions using ChatGPT, please wait...")
-        captions = generate_captions_with_chatgpt(labels, num_captions=10)
+        st.write("Generating social media captions using Hugging Face's Inference API, please wait...")
+        captions = generate_captions_with_hf(labels, num_captions=10)
         
         st.write("### Generated Social Media Captions:")
         for idx, caption in enumerate(captions, start=1):
