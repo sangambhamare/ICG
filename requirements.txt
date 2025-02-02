@@ -1,6 +1,6 @@
-streamlit==1.23.0
-transformers==4.29.2
-requests==2.28.2
-pillow==9.5.0
-torch==2.0.1
-sentencepiece==0.1.97
+streamlit
+transformers
+requests
+pillow
+torch
+sentencepiece
