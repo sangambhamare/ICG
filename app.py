@@ -72,11 +72,12 @@ def generate_extra_captions_gpt2(initial_caption, num_outputs=3):
     input_ids = tokenizer.encode(prompt, return_tensors="pt")
     outputs = model.generate(
         input_ids,
-        max_length=50,
-        num_beams=5,
-        no_repeat_ngram_size=2,
+        max_length=60,
+        do_sample=True,           # Enable sampling for diversity
+        top_k=50,                 # Sample from top 50 tokens
+        temperature=0.7,          # Moderate temperature for creativity
+        num_return_sequences=num_outputs,
         early_stopping=True,
-        num_return_sequences=num_outputs
     )
     extra_captions = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
     return extra_captions
@@ -93,17 +94,22 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_container_width=True)
     
-    # Start timing before generation begins
+    # Start time measurement
     start_time = time.time()
     
+    # Generate initial caption using BLIP Large
     proc_large, model_blip_large = load_blip_large_model()
     initial_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
     
+    # Generate creative captions using T5 (flan-t5-large)
     t5_captions = generate_social_media_captions(initial_caption, num_outputs=3)
+    
+    # Generate extra creative captions using GPT-2
     gpt2_captions = generate_extra_captions_gpt2(initial_caption, num_outputs=3)
     
-    # Combine both sets of captions into one ordered list
+    # Combine both sets into one ordered list
     combined_captions = t5_captions + gpt2_captions
+    
     elapsed_time = time.time() - start_time
     
     st.subheader(f"Social Media Captions (generated in {elapsed_time:.1f} seconds):")
