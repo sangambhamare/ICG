@@ -5,3 +5,4 @@ torchvision
 pillow
 nltk
 textblob
+boto3
