@@ -1,6 +1,7 @@
 streamlit
 transformers
-requests
-pillow
 torch
-sentencepiece
+torchvision
+pillow
+nltk
+textblob
