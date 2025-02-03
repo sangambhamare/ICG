@@ -1,5 +1,6 @@
 import streamlit as st
-from transformers import BlipProcessor, BlipForConditionalGeneration, TableTransformerModel, TableTransformerConfig
+from transformers import BlipProcessor, BlipForConditionalGeneration, AutoImageProcessor, TableTransformerForObjectDetection
+from huggingface_hub import hf_hub_download
 from PIL import Image
 import torch
 import nltk
@@ -10,30 +11,33 @@ from textblob import TextBlob
 nltk.download('wordnet')
 
 # Load BLIP model for captioning
-processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
-model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
+blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
 
-# Load TableTransformer model for object detection
-table_config = TableTransformerConfig()
-table_model = TableTransformerModel(table_config)
+# Load TableTransformer for Object Detection
+image_processor = AutoImageProcessor.from_pretrained("microsoft/table-transformer-detection")
+table_model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
 
-# Function to detect objects in image
+# Function to detect objects in the image
 def detect_objects(image):
-    inputs = processor(image, return_tensors="pt")
+    inputs = image_processor(images=image, return_tensors="pt")
     outputs = table_model(**inputs)
 
-    # Extract detected objects
+    # Convert outputs to Pascal VOC format (bounding boxes and labels)
+    target_sizes = torch.tensor([image.size[::-1]])
+    results = image_processor.post_process_object_detection(outputs, threshold=0.7, target_sizes=target_sizes)[0]
+
     detected_objects = []
-    for i in range(outputs.logits.shape[1]):
-        detected_objects.append(f"Object {i+1}")
+    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+        detected_objects.append(table_model.config.id2label[label.item()])
 
-    return detected_objects if detected_objects else ["Unknown Scene"]
+    return list(set(detected_objects)) if detected_objects else ["Unknown Scene"]
 
-# Function to generate caption using BLIP
+# Function to generate a caption using BLIP
 def generate_caption(image):
-    inputs = processor(image, return_tensors="pt")
-    output = model.generate(**inputs)
-    return processor.decode(output[0], skip_special_tokens=True)
+    inputs = blip_processor(image, return_tensors="pt")
+    output = blip_model.generate(**inputs)
+    return blip_processor.decode(output[0], skip_special_tokens=True)
 
 # Function to enhance caption using WordNet (synonyms)
 def enhance_caption(caption):
@@ -131,4 +135,4 @@ if uploaded_image:
     st.download_button("📥 Download Captions", caption_text, file_name="captions.txt")
 
 st.markdown("---")
-st.write("🚀 Built with BLIP, Object Detection, NLP, and Streamlit")
+st.write("🚀 Built with BLIP, TableTransformer Object Detection, NLP, and Streamlit")
