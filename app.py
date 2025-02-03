@@ -24,7 +24,7 @@ def detect_objects(image):
     for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
         detected_objects.append(table_model.config.id2label[label.item()])
 
-    return list(set(detected_objects)) if detected_objects else ["Unknown Scene"]
+    return list(set(detected_objects)) if detected_objects else ["scene"]
 
 # Function to generate a caption using BLIP
 def generate_caption(image):
@@ -32,20 +32,22 @@ def generate_caption(image):
     output = blip_model.generate(**inputs)
     return blip_processor.decode(output[0], skip_special_tokens=True)
 
-# Function to integrate detected objects into the final caption
+# Function to make final captions precise and attractive
 def generate_final_caption(caption, objects):
-    # Convert objects into a readable string
     object_list = ", ".join(objects)
-    
-    # Modify the caption to incorporate detected objects
-    final_caption = f"{caption}. Detected elements: {object_list}."
-    
+
+    # Improve fluency and readability of captions
+    if len(objects) > 1:
+        final_caption = f"{caption} Featuring {object_list}."
+    else:
+        final_caption = f"{caption} A stunning view with {object_list}."
+
     return final_caption
 
 # Streamlit UI
 st.set_page_config(page_title="AI Caption Generator", layout="centered")
 st.title("📸 AI Caption Generator")
-st.write("Upload an image, and get an AI-generated caption with detected elements!")
+st.write("Upload an image, and get an AI-generated short caption!")
 
 uploaded_image = st.file_uploader("Upload an image...", type=["jpg", "jpeg", "png"])
 
