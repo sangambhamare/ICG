@@ -6,3 +6,4 @@ pillow
 nltk
 textblob
 timm
+huggingface_hub
