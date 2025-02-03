@@ -1,117 +1,94 @@
 import streamlit as st
-import logging
-import requests
+from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
-import torch
-import time
-from transformers import (
-    BlipProcessor,
-    BlipForConditionalGeneration,
-    T5Tokenizer,
-    T5ForConditionalGeneration,
-    GPT2Tokenizer,
-    GPT2LMHeadModel,
-)
+import nltk
+from nltk.corpus import wordnet
+from textblob import TextBlob
+import os
 
-# Suppress extra logging from transformers
-logging.getLogger("transformers").setLevel(logging.ERROR)
+# Download necessary NLP datasets
+nltk.download('wordnet')
 
-##############################
-# BLIP Large Model for Captioning
-##############################
-@st.cache_resource
-def load_blip_large_model():
-    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large", use_fast=True)
-    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
-    return processor, model
+# Load BLIP model for captioning
+processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
 
-def generate_caption_blip_large(processor, model, image):
+# Function to generate caption using BLIP
+def generate_caption(image):
     inputs = processor(image, return_tensors="pt")
     output = model.generate(**inputs)
-    caption = processor.decode(output[0], skip_special_tokens=True)
-    return caption
+    return processor.decode(output[0], skip_special_tokens=True)
 
-##############################
-# T5-Based Social Media Caption Generation (flan-t5-large)
-##############################
-@st.cache_resource
-def load_t5_model():
-    tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-large")
-    model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large")
-    return tokenizer, model
+# Function to enhance caption using WordNet (synonyms)
+def enhance_caption(caption):
+    words = caption.split()
+    enhanced_caption = []
 
-def generate_social_media_captions(initial_caption, num_outputs=3):
-    prompt = (
-        f"Rewrite the following text as creative social media captions with similar words "
-        f"and include relevant hashtags: {initial_caption}"
-    )
-    tokenizer, model = load_t5_model()
-    input_ids = tokenizer(prompt, return_tensors="pt").input_ids
-    outputs = model.generate(
-        input_ids,
-        max_new_tokens=100,
-        num_beams=5,
-        num_return_sequences=num_outputs,
-        early_stopping=True,
-    )
-    captions = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
-    return captions
+    for word in words:
+        synonyms = wordnet.synsets(word)
+        if synonyms:
+            enhanced_caption.append(synonyms[0].lemmas()[0].name())  # Pick first synonym
+        else:
+            enhanced_caption.append(word)
 
-##############################
-# GPT-2 Based Extra Social Media Caption Generation
-##############################
-@st.cache_resource
-def load_gpt2_model():
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    model = GPT2LMHeadModel.from_pretrained("gpt2")
-    return tokenizer, model
+    return " ".join(enhanced_caption)
 
-def generate_extra_captions_gpt2(initial_caption, num_outputs=3):
-    prompt = f"Rewrite the following text as creative social media captions: {initial_caption}"
-    tokenizer, model = load_gpt2_model()
-    input_ids = tokenizer.encode(prompt, return_tensors="pt")
-    outputs = model.generate(
-        input_ids,
-        max_length=60,
-        do_sample=True,           # Enable sampling for diversity
-        top_k=50,                 # Sample from top 50 tokens
-        temperature=0.7,          # Moderate temperature for creativity
-        num_return_sequences=num_outputs,
-        early_stopping=True,
-    )
-    extra_captions = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
-    return extra_captions
+# Function to adjust caption based on sentiment
+def adjust_caption_tone(caption):
+    sentiment = TextBlob(caption).sentiment.polarity
 
-##############################
-# Streamlit App
-##############################
-st.title("Social Media Caption Generator")
-st.write("Upload an image to generate creative social media captions.")
+    if sentiment > 0.5:
+        return caption + " ✨ A breathtaking moment!"
+    elif sentiment < -0.5:
+        return caption + " 🌑 A solemn and mysterious view."
+    
+    return caption + " 🌇 A mesmerizing cityscape."
 
-uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
+# Function to generate different caption styles
+def generate_styled_captions(caption):
+    styles = {
+        "Poetic": f"As the sun dips below the skyline, {caption} whispers farewell to the day.",
+        "Descriptive": f"The golden hues paint the sky, casting a serene glow over the towering skyline. {caption}",
+        "Humorous": f"{caption}. Probably the best skyline selfie moment ever!"
+    }
+    return styles
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_container_width=True)
-    
-    # Start time measurement
-    start_time = time.time()
-    
-    # Generate initial caption using BLIP Large
-    proc_large, model_blip_large = load_blip_large_model()
-    initial_caption = generate_caption_blip_large(proc_large, model_blip_large, image)
-    
-    # Generate creative captions using T5 (flan-t5-large)
-    t5_captions = generate_social_media_captions(initial_caption, num_outputs=3)
-    
-    # Generate extra creative captions using GPT-2
-    gpt2_captions = generate_extra_captions_gpt2(initial_caption, num_outputs=3)
-    
-    # Combine both sets into one ordered list
-    combined_captions = t5_captions + gpt2_captions
-    
-    elapsed_time = time.time() - start_time
-    
-    st.subheader(f"Social Media Captions (generated in {elapsed_time:.1f} seconds):")
-    for idx, caption in enumerate(combined_captions, start=1):
-        st.write(f"{idx}. {caption}")
+# Streamlit UI
+st.set_page_config(page_title="AI Caption Generator", layout="centered")
+st.title("📸 Intelligent Caption Generator")
+st.write("Upload an image, and our AI will generate creative captions!")
+
+uploaded_image = st.file_uploader("Upload an image...", type=["jpg", "jpeg", "png"])
+
+if uploaded_image:
+    image = Image.open(uploaded_image)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+
+    with st.spinner("Generating captions..."):
+        # Step 1: Generate initial caption
+        caption = generate_caption(image)
+        
+        # Step 2: Enhance caption using synonyms
+        enhanced_caption = enhance_caption(caption)
+
+        # Step 3: Adjust based on sentiment
+        final_caption = adjust_caption_tone(enhanced_caption)
+
+        # Step 4: Generate different styles
+        styled_captions = generate_styled_captions(final_caption)
+
+    st.subheader("Generated Captions")
+    st.write(f"🔹 **Original BLIP Caption:** {caption}")
+    st.write(f"✨ **Enhanced Caption:** {enhanced_caption}")
+    st.write(f"🎭 **Final Adjusted Caption:** {final_caption}")
+
+    st.subheader("✨ Styled Captions")
+    for style, text in styled_captions.items():
+        st.write(f"**{style}:** {text}")
+
+    # Option to download captions
+    caption_text = "\n".join([f"{style}: {text}" for style, text in styled_captions.items()])
+    st.download_button("📥 Download Captions", caption_text, file_name="captions.txt")
+
+st.markdown("---")
+st.write("🚀 Built with BLIP, NLP, and Streamlit")
